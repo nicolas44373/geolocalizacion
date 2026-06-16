@@ -1,0 +1,17 @@
+{
+  "name": "Rastreo de Folleteros",
+  "short_name": "Rastreo",
+  "description": "Sistema de rastreo de folleteros en tiempo real",
+  "start_url": "/tracker/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/next.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ const baloo2 = Baloo_2({
 export const metadata: Metadata = {
   title: "Rastreo de Folleteros",
   description: "Sistema de rastreo de folleteros en tiempo real",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({

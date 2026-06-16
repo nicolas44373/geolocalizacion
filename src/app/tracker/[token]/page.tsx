@@ -60,6 +60,8 @@ export default function TrackerPage() {
   const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
   const wakeLockRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const oscillatorRef = useRef<OscillatorNode | null>(null);
   const lastReceivedTimeRef = useRef<number>(Date.now());
   const unlockTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -76,10 +78,16 @@ export default function TrackerPage() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Inicializar audio silencioso para hack de segundo plano
+    // Inicializar audio silencioso para hack de segundo plano y registrar PWA service worker
     if (typeof window !== 'undefined') {
       audioRef.current = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
       audioRef.current.loop = true;
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('Service Worker registrado:', reg.scope))
+          .catch(err => console.error('Error al registrar Service Worker:', err));
+      }
     }
 
     // Cargar cantidad de puntos enviados guardados en esta sesión
@@ -298,6 +306,50 @@ export default function TrackerPage() {
     );
   };
 
+  const startBackgroundAudio = () => {
+    try {
+      if (audioContextRef.current) return;
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      const ctx = new AudioContextClass();
+      audioContextRef.current = ctx;
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 20; // 20 Hz, inaudible
+
+      const gain = ctx.createGain();
+      gain.gain.value = 0.001; // volumen extremadamente bajo
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      oscillatorRef.current = osc;
+      console.log('Oscilador inaudible Web Audio API iniciado para segundo plano.');
+    } catch (err) {
+      console.warn('Fallo al iniciar Web Audio API:', err);
+    }
+  };
+
+  const stopBackgroundAudio = () => {
+    try {
+      if (oscillatorRef.current) {
+        oscillatorRef.current.stop();
+        oscillatorRef.current.disconnect();
+        oscillatorRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      console.log('Oscilador Web Audio API detenido.');
+    } catch (err) {
+      console.warn('Fallo al detener Web Audio API:', err);
+    }
+  };
+
   // Iniciar la geolocalización
   const startGPSWatch = () => {
     if (watchIdRef.current) return; // Ya está activo
@@ -346,8 +398,11 @@ export default function TrackerPage() {
       });
     }
 
-    // Intervalo de evaluación cada 5 segundos para decidir si enviar posición
-    intervalIdRef.current = setInterval(evaluateAndSend, 5000);
+    // Iniciar oscilador Web Audio API
+    startBackgroundAudio();
+
+    // Intervalo de evaluación cada 1 segundo para decidir si enviar posición
+    intervalIdRef.current = setInterval(evaluateAndSend, 1000);
   };
 
   // Detener la geolocalización
@@ -375,6 +430,9 @@ export default function TrackerPage() {
         console.error("Error al pausar audio de fondo:", err);
       }
     }
+
+    // Detener oscilador Web Audio API
+    stopBackgroundAudio();
   };
 
   // Evaluar si corresponde enviar la ubicación
@@ -387,7 +445,7 @@ export default function TrackerPage() {
 
     // 2. Verificar si ha pasado demasiado tiempo sin reporte de coordenadas (watchdog)
     const timeSinceLastPosition = Date.now() - lastReceivedTimeRef.current;
-    if (timeSinceLastPosition >= 25000) {
+    if (timeSinceLastPosition >= 12000) {
       // Intentar forzar una lectura GPS manual ya que watchPosition está quieto o dormido
       forceGPSRefresh();
     }
@@ -425,11 +483,11 @@ export default function TrackerPage() {
     const elapsedSeconds = (now - lastSent.timestamp) / 1000;
 
     // Frecuencia:
-    // 1. En movimiento (> 10 metros): enviar cada 15 segundos
-    // 2. En reposo (<= 10 metros): enviar cada 60 segundos
-    if (dist > 10 && elapsedSeconds >= 15) {
+    // 1. En movimiento (> 0.5 metros): enviar cada 1 segundo
+    // 2. En reposo (<= 0.5 metros): enviar cada 15 segundos
+    if (dist > 0.5 && elapsedSeconds >= 1) {
       queueOrSendLocation(current);
-    } else if (dist <= 10 && elapsedSeconds >= 60) {
+    } else if (dist <= 0.5 && elapsedSeconds >= 15) {
       queueOrSendLocation(current);
     }
   };

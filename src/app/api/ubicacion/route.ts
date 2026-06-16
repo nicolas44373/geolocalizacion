@@ -59,9 +59,14 @@ export async function POST(request: Request) {
       const tiempoTranscurridoMs = new Date().getTime() - new Date(ultimaUbicacion.created_at).getTime();
       const tiempoTranscurridoS = tiempoTranscurridoMs / 1000;
 
-      // Si la distancia es < 10 metros (quieto) y pasaron menos de 50 segundos
-      // desde el último punto registrado, ignoramos la inserción para ahorrar datos.
-      if (distancia < 10 && tiempoTranscurridoS < 50) {
+      // Si la petición llega en el mismo segundo, la ignoramos para evitar duplicidad de red
+      if (tiempoTranscurridoS < 1) {
+        return NextResponse.json({ ok: true, status: 'ignored_duplicate' });
+      }
+
+      // Si la distancia es < 1 metro (quieto) y pasaron menos de 10 segundos
+      // desde el último punto registrado, ignoramos la inserción para ahorrar datos
+      if (distancia < 1 && tiempoTranscurridoS < 10) {
         return NextResponse.json({ ok: true, status: 'ignored_quiet' });
       }
     }
